@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { RateData, Quotation, QuotationContextType } from '../types';
 
-const API_BASE_URL = '/api';
-
+const API_BASE_URL = 'https://quotation-backend-dk58.onrender.com/api';
 const QuotationContext = createContext<QuotationContextType | undefined>(undefined);
 
 export const QuotationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
