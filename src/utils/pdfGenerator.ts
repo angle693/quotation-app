@@ -2,6 +2,28 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Quotation, RateData } from '../types';
 
+// Helper function to load image as base64
+const loadImageAsBase64 = (imageUrl: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = imageUrl;
+  });
+};
+
 export const generatePDF = async (
   quotation: Quotation,
   rates: RateData,
@@ -9,15 +31,11 @@ export const generatePDF = async (
 ) => {
   // Mapping of brand details for label and code
   const brandDetails: { [brand: string]: { label: string; code: string } } = {
-    'Duraflame semiwaterproof 303': { label: 'semiwaterproof', code: '303' },
-    'Durbi semiwaterproof 303': { label: 'semiwaterproof', code: '303' },
-    
-    'Nocte semiwaterproof 303': { label: 'semiwaterproof', code: '303' },
-    'Nocte wsaterproof 710': { label: 'waterproof', code: '710' }
+    'Duraflame Semiwaterproof 303': { label: 'semiwaterproof', code: '303' },
+    'Durbi Semiwaterproof 303': { label: 'semiwaterproof', code: '303' },
+    'Nocte Semiwaterproof 303': { label: 'semiwaterproof', code: '303' },
+    'Nocte Waterproof 710': { label: 'waterproof', code: '710' }
   };
-
-  // Replace last brand name "Nocte semiwaterproof 710" with "Nocte Waterproof 710"
- 
 
   // Create a temporary div for PDF content
   const tempDiv = document.createElement('div');
@@ -56,8 +74,8 @@ export const generatePDF = async (
       <!-- Header -->
       <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #d97706; padding-bottom: 5px;">
         <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">
-          <div style="width: 120px; height: 85px; margin-right: px;">
-            <img src="src/asset/Bhakti_Sales_New_logo_without_background-removebg-preview.png" alt="Logo" style="width: 100%; height: 100%; object-fit: contain;" />
+          <div style="width: 120px; height: 85px; margin-right: 15px;">
+            <img id="logo" src="" alt="Logo" style="width: 100%; height: 100%; object-fit: contain;" />
           </div>
           <div style="text-align: left;">
             <h1 style="margin: 0; font-size: 40px; font-weight: bold; color: #92400e; letter-spacing: 2px;">BHAKTI SALES</h1>
@@ -225,12 +243,29 @@ export const generatePDF = async (
         </div>
       </div>
       ` : ''}
-
   `;
 
   document.body.appendChild(tempDiv);
 
   try {
+    // Load logo as base64
+    let logoDataUrl = '';
+    try {
+      // Use public folder path for production safety
+      const logoUrl = '/Bhakti_Sales_New_logo_without_background-removebg-preview.png';
+      logoDataUrl = await loadImageAsBase64(logoUrl);
+    } catch (err) {
+      console.error('Failed to load logo:', err);
+      // Fallback: skip logo if loading fails
+    }
+
+    // Set logo in HTML after it's loaded
+    const logoImg = tempDiv.querySelector('#logo') as HTMLImageElement;
+    if (logoImg && logoDataUrl) {
+      logoImg.src = logoDataUrl;
+    }
+
+    // Generate PDF
     const canvas = await html2canvas(tempDiv, {
       scale: 2,
       useCORS: true,
@@ -246,24 +281,24 @@ export const generatePDF = async (
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-    // Calculate number of pages needed
-    const pageHeight = pdf.internal.pageSize.getHeight();
+    // Add first page
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+
+    // Add additional pages if needed
     let heightLeft = pdfHeight;
     let position = 0;
 
-    pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
-    heightLeft -= pageHeight;
-
     while (heightLeft > 0) {
       position = heightLeft - pdfHeight;
+      if (position < 0) break; // Avoid negative position
       pdf.addPage();
       pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
-      heightLeft -= pageHeight;
+      heightLeft -= pdf.internal.pageSize.getHeight();
     }
 
     const fileName = `quotation-${quotation.customer.name.replace(/\s+/g, '')}-${quotation.quotationNo}.pdf`;
     pdf.save(fileName);
-    
+
   } catch (error) {
     console.error('Error generating PDF:', error);
     alert('Error generating PDF. Please try again.');
