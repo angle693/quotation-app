@@ -1,7 +1,10 @@
+// src/context/QuotationContext.tsx
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { RateData, Quotation, QuotationContextType } from '../types';
 
+// 👉 Fixed: removed extra space in URL
 const API_BASE_URL = 'https://quotation-backend-dk58.onrender.com/api';
+
 const QuotationContext = createContext<QuotationContextType | undefined>(undefined);
 
 export const QuotationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -56,12 +59,25 @@ export const QuotationProvider: React.FC<{ children: ReactNode }> = ({ children 
     addQuotation(data);
   };
 
+  // 👇 Added deleteQuotation
+  const deleteQuotation = async (quotationNo: number) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/quotations/${quotationNo}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error('Delete failed');
+      setQuotations(prev => prev.filter(q => q.quotationNo !== quotationNo));
+    } catch (err) {
+      alert(`Failed to delete: ${(err as Error).message}`);
+    }
+  };
+
   const updateRates = (newRates: RateData) => setRates(newRates);
   const getNextQuotationNo = () => quotations.length ? Math.max(...quotations.map(q => q.quotationNo)) + 1 : 1001;
 
   return (
     <QuotationContext.Provider value={{
-      rates, updateRates, quotations, addQuotation, updateQuotation, getNextQuotationNo, loading
+      rates, updateRates, quotations, addQuotation, updateQuotation, deleteQuotation, getNextQuotationNo, loading
     }}>
       {children}
     </QuotationContext.Provider>

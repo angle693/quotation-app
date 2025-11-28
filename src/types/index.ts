@@ -1,3 +1,4 @@
+// src/types/index.ts
 export interface Customer {
   name: string;
   mobile: string;
@@ -47,6 +48,7 @@ export interface QuotationContextType {
   quotations: Quotation[];
   addQuotation: (data: Omit<Quotation, 'quotationNo' | 'createdAt'>) => void;
   updateQuotation: (quotationNo: number, data: Omit<Quotation, 'quotationNo' | 'createdAt'>) => void;
+  deleteQuotation: (quotationNo: number) => void; // 👈 Added
   getNextQuotationNo: () => number;
   loading: boolean;
 }

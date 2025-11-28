@@ -1,13 +1,15 @@
 // src/pages/ProductListPage.tsx
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, MessageCircle, Edit3, FileText } from 'lucide-react';
+// 👇 Added Trash2 icon
+import { Download, MessageCircle, Edit3, FileText, Trash2 } from 'lucide-react';
 import { useQuotation } from '../context/QuotationContext';
 import { generatePDF } from '../utils/pdfGenerator';
 
 const ProductListPage: React.FC = () => {
   const navigate = useNavigate();
-  const { quotations, rates } = useQuotation();
+  // 👇 Destructure deleteQuotation
+  const { quotations, rates, deleteQuotation } = useQuotation();
 
   const handleDownload = (quotation: any) => {
     generatePDF(quotation, rates, quotation.brandAdjustments || {});
@@ -17,12 +19,20 @@ const ProductListPage: React.FC = () => {
     const message = `Dear ${quotation.customer.name}, here is your quotation from Bhakti Sales - Vadodara. Quotation No: ${quotation.quotationNo}`;
     const encodedMessage = encodeURIComponent(message);
     const mobile = quotation.customer.mobile.replace(/\D/g, '');
+    // 👉 Fixed: removed extra space in WhatsApp URL
     const whatsappUrl = `https://wa.me/91${mobile}?text=${encodedMessage}`;
     window.open(whatsappUrl, '_blank');
   };
 
   const handleEdit = (quotation: any) => {
     navigate('/add-product', { state: { quotation } });
+  };
+
+  // 👇 Added handleDelete
+  const handleDelete = (quotationNo: number) => {
+    if (confirm('Are you sure you want to delete this quotation? This action cannot be undone.')) {
+      deleteQuotation(quotationNo);
+    }
   };
 
   const calculateBrandTotal = (quotation: any, brand: string) => {
@@ -158,6 +168,14 @@ const ProductListPage: React.FC = () => {
                           title="Edit Quotation"
                         >
                           <Edit3 className="w-4 h-4" />
+                        </button>
+                        {/* 👇 Added Delete Button */}
+                        <button
+                          onClick={() => handleDelete(quotation.quotationNo)}
+                          className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete Quotation"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </td>

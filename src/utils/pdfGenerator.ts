@@ -2,7 +2,6 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Quotation, RateData } from '../types';
 
-// Helper function to load image as base64 (JPEG)
 const loadImageAsBase64 = (imageUrl: string): Promise<string> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -17,7 +16,6 @@ const loadImageAsBase64 = (imageUrl: string): Promise<string> => {
         return;
       }
       ctx.drawImage(img, 0, 0);
-      // Use JPEG with quality = 0.8
       resolve(canvas.toDataURL('image/jpeg', 0.8));
     };
     img.onerror = () => reject(new Error('Failed to load image'));
@@ -25,12 +23,38 @@ const loadImageAsBase64 = (imageUrl: string): Promise<string> => {
   });
 };
 
+const renderPageToCanvas = async (html: string, logoDataUrl?: string): Promise<HTMLCanvasElement> => {
+  const div = document.createElement('div');
+  div.style.position = 'absolute';
+  div.style.left = '-9999px';
+  div.style.top = '0';
+  div.style.width = '210mm';
+  div.style.padding = '15px';
+  div.style.fontFamily = 'Arial, sans-serif';
+  div.style.fontSize = '11px';
+  div.innerHTML = html;
+
+  if (logoDataUrl && div.querySelector('#logo')) {
+    (div.querySelector('#logo') as HTMLImageElement).src = logoDataUrl;
+  }
+
+  document.body.appendChild(div);
+  const canvas = await html2canvas(div, {
+    scale: 1.3,
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: '#ffffff',
+    logging: false
+  });
+  document.body.removeChild(div);
+  return canvas;
+};
+
 export const generatePDF = async (
   quotation: Quotation,
   rates: RateData,
   brandAdjustments: { [brand: string]: number }
 ) => {
-  // Mapping of brand details for label and code
   const brandDetails: { [brand: string]: { label: string; code: string } } = {
     'Duraflame Semiwaterproof 303': { label: 'semiwaterproof', code: '303' },
     'Durbi Semiwaterproof 303': { label: 'semiwaterproof', code: '303' },
@@ -38,37 +62,16 @@ export const generatePDF = async (
     'Nocte Waterproof 710': { label: 'waterproof', code: '710' }
   };
 
-  // Create a temporary div for PDF content
-  const tempDiv = document.createElement('div');
-  tempDiv.style.position = 'absolute';
-  tempDiv.style.left = '-9999px';
-  tempDiv.style.top = '0';
-  tempDiv.style.width = '210mm';
-  tempDiv.style.backgroundColor = 'white';
-  tempDiv.style.padding = '15px'; // Reduced padding
-  tempDiv.style.fontFamily = 'Arial, sans-serif';
-  tempDiv.style.fontSize = '11px'; // Slightly smaller base font
-
-  // Calculate totals
   const calculateBrandTotal = (brand: string) => {
-    return quotation.products.reduce((total, product) => {
-      return total + (product.brandTotals[brand] || 0);
-    }, 0);
+    return quotation.products.reduce((total, product) => total + (product.brandTotals[brand] || 0), 0);
   };
-
   const calculateAdditionalItemsTotal = () => {
     return quotation.additionalItems.reduce((total, item) => total + item.total, 0);
   };
 
-  const getAdjustedRate = (brand: string, thickness: string) => {
-    const baseRate = rates[brand]?.[thickness as keyof typeof rates[typeof brand]] || 0;
-    const adjustment = brandAdjustments[brand] || 0;
-    return baseRate * (1 + adjustment / 100);
-  };
-
-  // Build HTML content
-  tempDiv.innerHTML = `
-    <div style="max-width: 800px; margin: 0 auto; background: white; padding: 15px;">
+  // --- PAGE 1 CONTENT ---
+  const page1Html = `
+    <div style="max-width: 800px; margin: 0 auto;">
       <!-- Header -->
       <div style="text-align: center; margin-bottom: 25px; border-bottom: 2px solid #d97706; padding-bottom: 5px;">
         <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">
@@ -91,7 +94,7 @@ export const generatePDF = async (
         </div>
       </div>
 
-      <!-- Customer & Quotation Info -->
+      <!-- Customer Info -->
       <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
         <div style="flex: 1;">
           <h3 style="margin-top: 0; color: #1f2937; font-size: 15px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">Customer Details</h3>
@@ -106,11 +109,11 @@ export const generatePDF = async (
         </div>
       </div>
 
-      <!-- Products Table -->
+      <!-- Products -->
       ${quotation.products.length > 0 ? `
       <div style="margin-bottom: 20px;">
         <h3 style="color: #1f2937; font-size: 15px; margin-bottom: 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">Product Details</h3>
-          <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 15px;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
           <thead>
             <tr style="background-color: #f9fafb;">
               <th style="border: 1px solid #d1d5db; padding: 6px; text-align: left;">Thickness</th>
@@ -151,12 +154,16 @@ export const generatePDF = async (
         </table>
       </div>
       ` : ''}
+    </div>
+  `;
 
-      <!-- Additional Items -->
-      ${quotation.additionalItems.length > 0 ? `
-      <div style="page-break-before: always; margin-bottom: 20px;">
+  // --- PAGE 2 CONTENT (only if additional items exist) ---
+  let page2Html = '';
+  if (quotation.additionalItems.length > 0) {
+    page2Html = `
+      <div style="max-width: 800px; margin: 0 auto; padding-top: 20px;">
         <h3 style="color: #1f2937; font-size: 15px; margin-bottom: 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">Additional Items</h3>
-        <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 15px;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 20px;">
           <thead>
             <tr style="background-color: #f9fafb;">
               <th style="border: 1px solid #d1d5db; padding: 6px; text-align: left;">Product Name</th>
@@ -183,36 +190,33 @@ export const generatePDF = async (
           </tbody>
         </table>
 
-        <div style="page-break-before: always;">
-          <h3 style="color: #1f2937; font-size: 15px; margin-top: 80px; margin-bottom: 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; padding-top:80px">Totals Breakdown:</h3>
-          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-            <thead>
-              <tr style="background-color: #f9fafb;">
-                <th style="border: 1px solid #d1d5db; padding: 6px; text-align: left;">Brand Name</th>
-                <th style="border: 1px solid #d1d5db; padding: 6px; text-align: center;">Brand Total</th>
-                <th style="border: 1px solid #d1d5db; padding: 6px; text-align: center;">Additional</th>
-                <th style="border: 1px solid #d1d5db; padding: 6px; text-align: center;">All Total</th>
+        <h3 style="color: #1f2937; font-size: 15px; margin-bottom: 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">Totals Breakdown:</h3>
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 20px;">
+          <thead>
+            <tr style="background-color: #f9fafb;">
+              <th style="border: 1px solid #d1d5db; padding: 6px; text-align: left;">Brand Name</th>
+              <th style="border: 1px solid #d1d5db; padding: 6px; text-align: center;">Brand Total</th>
+              <th style="border: 1px solid #d1d5db; padding: 6px; text-align: center;">Additional</th>
+              <th style="border: 1px solid #d1d5db; padding: 6px; text-align: center;">All Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${quotation.selectedBrands.map(brand => `
+              <tr>
+                <td style="border: 1px solid #d1d5db; padding: 6px;">${brand}</td>
+                <td style="border: 1px solid #d1d5db; padding: 6px; text-align: center;">₹${Math.round(calculateBrandTotal(brand))}</td>
+                <td style="border: 1px solid #d1d5db; padding: 6px; text-align: center;">₹${Math.round(calculateAdditionalItemsTotal())}</td>
+                <td style="border: 1px solid #d1d5db; padding: 6px; text-align: center; font-weight: bold;">₹${Math.round(calculateBrandTotal(brand) + calculateAdditionalItemsTotal())}</td>
               </tr>
-            </thead>
-            <tbody>
-              ${quotation.selectedBrands.map(brand => `
-                <tr>
-                  <td style="border: 1px solid #d1d5db; padding: 6px;">${brand}</td>
-                  <td style="border: 1px solid #d1d5db; padding: 6px; text-align: center;">₹${Math.round(calculateBrandTotal(brand))}</td>
-                  <td style="border: 1px solid #d1d5db; padding: 6px; text-align: center;">₹${Math.round(calculateAdditionalItemsTotal())}</td>
-                  <td style="border: 1px solid #d1d5db; padding: 6px; text-align: center; font-weight: bold;">₹${Math.round(calculateBrandTotal(brand) + calculateAdditionalItemsTotal())}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
+            `).join('')}
+          </tbody>
+        </table>
 
-        <div style="page-break-before: always;">
-          <h3 style="color: #1f2937; font-size: 15px; margin-top: 25px; margin-bottom: 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">Plywood Rates:</h3>
-          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-            <thead>
-              <tr style="background-color: #f9fafb;">
-                <th style="border: 1px solid #d1d5db; padding: 6px; text-align: left;">THICKNESS</th>
+        <h3 style="color: #1f2937; font-size: 15px; margin-bottom: 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">Plywood Rates:</h3>
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+          <thead>
+            <tr style="background-color: #f9fafb;">
+              <th style="border: 1px solid #d1d5db; padding: 6px; text-align: left;">THICKNESS</th>
               ${quotation.selectedBrands.map(brand => {
                 const details = brandDetails[brand] || { label: '', code: '' };
                 return `
@@ -223,80 +227,49 @@ export const generatePDF = async (
                   </th>
                 `;
               }).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${['19MM', '12MM', '9MM', '6MM'].map(thickness => `
+              <tr>
+                <td style="border: 1px solid #d1d5db; padding: 6px;">${thickness}</td>
+                ${quotation.selectedBrands.map(brand => `
+                  <td style="border: 1px solid #d1d5db; padding: 6px; text-align: center;">₹${Math.round(rates[brand]?.[thickness as keyof typeof rates[typeof brand]] || 0)}</td>
+                `).join('')}
               </tr>
-            </thead>
-            <tbody>
-              ${['19MM', '12MM', '9MM', '6MM'].map(thickness => `
-                <tr>
-                  <td style="border: 1px solid #d1d5db; padding: 6px;">${thickness}</td>
-                  ${quotation.selectedBrands.map(brand => `
-                    <td style="border: 1px solid #d1d5db; padding: 6px; text-align: center;">₹${Math.round(rates[brand]?.[thickness as keyof typeof rates[typeof brand]] || 0)}</td>
-                  `).join('')}
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
+            `).join('')}
+          </tbody>
+        </table>
       </div>
-      ` : ''}
-  `;
-
-  document.body.appendChild(tempDiv);
+    `;
+  }
 
   try {
-    // Load logo as base64 (JPEG)
+    // Load logo once
     let logoDataUrl = '';
     try {
-      const logoUrl = '/Bhakti_Sales_New_logo_without_background-removebg-preview.jpg'; // ✅ .jpg
-      logoDataUrl = await loadImageAsBase64(logoUrl);
+      logoDataUrl = await loadImageAsBase64('/Bhakti_Sales_New_logo_without_background-removebg-preview.jpg');
     } catch (err) {
       console.error('Failed to load logo:', err);
     }
 
-    const logoImg = tempDiv.querySelector('#logo') as HTMLImageElement;
-    if (logoImg && logoDataUrl) {
-      logoImg.src = logoDataUrl;
-    }
-
-    // Generate canvas with reduced scale
-    const canvas = await html2canvas(tempDiv, {
-      scale: 1.3, // Reduced from 2 → 1.3
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff',
-      width: 800,
-      height: tempDiv.scrollHeight,
-      logging: false
-    });
-
-    // Use JPEG output with compression
-    const imgData = canvas.toDataURL('image/jpeg', 0.75);
-
+    // Render pages
+    const canvas1 = await renderPageToCanvas(page1Html, logoDataUrl);
     const pdf = new jsPDF('p', 'mm', 'a4');
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+    const width = pdf.internal.pageSize.getWidth();
+    const height1 = (canvas1.height * width) / canvas1.width;
+    pdf.addImage(canvas1.toDataURL('image/jpeg', 0.75), 'JPEG', 0, 0, width, height1);
 
-    // First page
-    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-
-    // Additional pages
-    let currentHeight = pdfHeight;
-    const pageHeight = pdf.internal.pageSize.getHeight();
-
-    while (currentHeight > pageHeight) {
-      const pos = -(currentHeight - pageHeight);
+    if (page2Html) {
+      const canvas2 = await renderPageToCanvas(page2Html, logoDataUrl);
+      const height2 = (canvas2.height * width) / canvas2.width;
       pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', 0, pos, pdfWidth, pdfHeight);
-      currentHeight -= pageHeight;
+      pdf.addImage(canvas2.toDataURL('image/jpeg', 0.75), 'JPEG', 0, 0, width, height2);
     }
 
-    const fileName = `quotation-${quotation.customer.name.replace(/\s+/g, '')}-${quotation.quotationNo}.pdf`;
-    pdf.save(fileName);
-
+    pdf.save(`quotation-${quotation.customer.name.replace(/\s+/g, '')}-${quotation.quotationNo}.pdf`);
   } catch (error) {
-    console.error('Error generating PDF:', error);
-    alert('Error generating PDF. Please try again.');
-  } finally {
-    document.body.removeChild(tempDiv);
+    console.error('PDF generation error:', error);
+    alert('Failed to generate PDF. Please try again.');
   }
 };

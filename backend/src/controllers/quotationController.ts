@@ -40,3 +40,27 @@ export const createQuotation = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Failed to create quotation' });
   }
 };
+
+// 👇 Added delete function
+export const deleteQuotation = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Validate that ID is a number
+    const quotationNo = parseInt(id, 10);
+    if (isNaN(quotationNo)) {
+      return res.status(400).json({ message: 'Invalid quotation number' });
+    }
+
+    const result = await Quotation.deleteOne({ quotationNo });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ message: 'Quotation not found' });
+    }
+
+    res.status(200).json({ message: 'Quotation deleted successfully' });
+  } catch (err) {
+    console.error('Delete quotation error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
